@@ -1,0 +1,6 @@
+# Deployment Guide
+
+```bash
+docker compose build
+docker compose up
+```

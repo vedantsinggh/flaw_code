@@ -85,8 +85,9 @@ class DeveloperAgent(BaseAgent):
             slack_client.log_event("Developer", "OpenClaw Error", str(e), task_id)
 
         # Git commit + PR
+        branch_name = f"feature/{task_id}"
         git_success = await github_client.create_commit(
-            branch="feature/fastapi-crud",
+            branch=branch_name,
             commit_message=f"feat: implement {task['title'].lower()}",
             files_changed=[demo_code_path],
         )
@@ -94,12 +95,12 @@ class DeveloperAgent(BaseAgent):
             slack_client.log_event("Git", "Commit Created", f"feat: implement {task['title'].lower()}", task_id)
             await slack_client.post_message(
                 "#agent-developer",
-                f"📦 *Git Commit*: Committed to branch `feature/fastapi-crud`.\n`feat: implement {task['title'].lower()}`",
+                f"📦 *Git Commit*: Committed to branch `{branch_name}`.\n`feat: implement {task['title'].lower()}`",
             )
             pr_data = await github_client.create_pull_request(
                 title=f"feat: implement {task['title'].lower()}",
                 body=f"Implements task {task_id}: {task['description']}",
-                head_branch="feature/fastapi-crud",
+                head_branch=branch_name,
                 base_branch="main",
             )
             slack_client.log_event("Git", "PR Opened", f"PR #{pr_data['id']}: {pr_data['title']}", task_id)
@@ -107,11 +108,6 @@ class DeveloperAgent(BaseAgent):
                 "#sprint-main",
                 f"🔀 *PR Opened*: PR #{pr_data['id']} \"{pr_data['title']}\"\n{pr_data['url']}",
             )
-            await slack_client.post_message(
-                "#ci-cd",
-                "🔄 *CI Started*: GitHub Actions triggered for `feature/fastapi-crud`.",
-            )
-            slack_client.log_event("CI", "Started", "GitHub Actions triggered.", task_id)
 
         task["status"] = "Review"
         tasks[task_id] = task
