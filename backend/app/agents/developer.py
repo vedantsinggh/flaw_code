@@ -53,7 +53,9 @@ class DeveloperAgent(BaseAgent):
         injected_skills_prompt = skill_engine.get_injected_prompt(task_skills)
         system_prompt = (
             "You are the Lead Developer Agent of ForgeOS. Write clean, maintainable, "
-            "production-grade Python/FastAPI code with proper typing and async structures."
+            "production-grade code.\n"
+            "IMPORTANT: Always generate a README.md file in the root of the project "
+            "detailing the application overview, features, and setup/run instructions.\n"
             f"{injected_skills_prompt}"
         )
         prompt = f"Implement: {task['title']} — {task['description']}. Provide the code structure."
@@ -62,6 +64,8 @@ class DeveloperAgent(BaseAgent):
         import re
 
         repo_root = "/home/mirage/Projects/forge2"
+        app_name = task.get("app_name") or "my_app"
+        app_dir = os.path.join(repo_root, "forge", "demo", app_name)
         files_written = []
 
         # Extract markdown code blocks
@@ -103,12 +107,12 @@ class DeveloperAgent(BaseAgent):
 
                 filename = os.path.basename(filename) if "/" not in filename else filename
                 if not os.path.isabs(filename):
-                    full_path = os.path.abspath(os.path.join(repo_root, filename))
+                    full_path = os.path.abspath(os.path.join(app_dir, filename))
                 else:
                     full_path = filename
 
-                if not full_path.startswith(repo_root):
-                    full_path = os.path.join(repo_root, os.path.basename(full_path))
+                if not full_path.startswith(app_dir):
+                    full_path = os.path.join(app_dir, os.path.basename(full_path))
 
                 try:
                     os.makedirs(os.path.dirname(full_path), exist_ok=True)
@@ -130,7 +134,7 @@ class DeveloperAgent(BaseAgent):
             elif "python" in task["title"].lower() or "fastapi" in task["title"].lower():
                 filename = "main.py"
 
-            full_path = os.path.join(repo_root, filename)
+            full_path = os.path.join(app_dir, filename)
             try:
                 with open(full_path, "w", encoding="utf-8") as f:
                     f.write(code_response)
@@ -142,41 +146,13 @@ class DeveloperAgent(BaseAgent):
         files_written_names = ", ".join([os.path.basename(f) for f in files_written])
         slack_client.log_event("Developer", "Code Written", f"OpenClaw wrote {files_written_names}", task_id)
 
-        # Git commit + PR
-        branch_name = f"feature/{task_id}"
-        # Create branch reference on GitHub first
-        await github_client.create_branch(branch_name)
-
-        git_success = await github_client.create_commit(
-            branch=branch_name,
-            commit_message=f"feat: implement {task['title'].lower()}",
-            files_changed=files_written,
-        )
-        if git_success:
-            slack_client.log_event("Git", "Commit Created", f"feat: implement {task['title'].lower()}", task_id)
-            await slack_client.post_message(
-                "#agent-developer",
-                f"📦 *Git Commit*: Committed to branch `{branch_name}`.\n`feat: implement {task['title'].lower()}`",
-            )
-            pr_data = await github_client.create_pull_request(
-                title=f"feat: implement {task['title'].lower()}",
-                body=f"Implements task {task_id}: {task['description']}",
-                head_branch=branch_name,
-                base_branch="main",
-            )
-            slack_client.log_event("Git", "PR Opened", f"PR #{pr_data['id']}: {pr_data['title']}", task_id)
-            await slack_client.post_message(
-                "#sprint-main",
-                f"🔀 *PR Opened*: PR #{pr_data['id']} \"{pr_data['title']}\"\n{pr_data['url']}",
-            )
-
         task["status"] = "Review"
         tasks[task_id] = task
         tasks_store.write_all(tasks)
 
         await slack_client.post_message(
             "#agent-developer",
-            f"✅ *Implementation Complete*: \"{task['title']}\" moved to Review.",
+            f"✅ *Implementation Complete*: \"{task['title']}\" written to `{os.path.relpath(app_dir, repo_root)}`.",
         )
         slack_client.log_event("Developer", "Task Complete", f"Moved to Review", task_id)
         return True

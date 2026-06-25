@@ -97,6 +97,7 @@ class HermesAgent(BaseAgent):
             "variable assignments, comments, or any other explanations. Ensure the root is a JSON object. "
             "Schema:\n"
             "{\n"
+            "  \"app_name\": \"string (clean snake_case folder name for the project)\",\n"
             "  \"tasks\": [\n"
             "    {\n"
             "      \"id\": \"string\",\n"
@@ -220,17 +221,26 @@ class HermesAgent(BaseAgent):
                 raise e
 
         # 5. Persist tasks on Kanban
+        try:
+            app_name = plan_json.get("app_name")
+        except Exception:
+            app_name = None
+        if not app_name:
+            import re
+            app_name = re.sub(r'[^a-z0-9_]+', '_', goal.lower()).strip('_')
+
         current_tasks = tasks_store.read_all()
+        created_tasks_list = []
         for idx, t in enumerate(tasks_list):
             task_id = f"task_{int(datetime.utcnow().timestamp())}_{idx}"
-            assigned_agent = "Developer Agent" if idx > 0 else "Hermes"
+            assigned_agent = "Developer Agent"
             t_title = t.get("title") or t.get("task_title") or t.get("name") or t.get("id") or f"Task {idx+1}"
             t_desc = t.get("description") or t.get("task_description") or t.get("desc") or t_title
             t_obj = {
                 "id": task_id,
                 "title": t_title,
                 "description": t_desc,
-                "status": "Backlog" if idx > 0 else "Planning",
+                "status": "Backlog",
                 "assigned_agent": assigned_agent,
                 "priority": t.get("priority", "Medium"),
                 "difficulty": t.get("difficulty", "Medium"),
@@ -239,8 +249,10 @@ class HermesAgent(BaseAgent):
                 "model": routing["selected_model"],
                 "confidence": routing["confidence"],
                 "created_at": datetime.utcnow().isoformat(),
+                "app_name": app_name,
             }
             current_tasks[task_id] = t_obj
+            created_tasks_list.append(t_obj)
             await slack_client.post_message(
                 "#sprint-main",
                 f"📋 *Task Created*: `{task_id}` — \"{t_title}\" → assigned to `{assigned_agent}`.",
@@ -299,7 +311,7 @@ class HermesAgent(BaseAgent):
         )
         slack_client.log_event("Hermes", "Planning Complete", f"{len(tasks_list)} tasks created for: {goal}")
 
-        return {"status": "Success", "skills": loaded_skills, "routing": routing, "tasks": tasks_list}
+        return {"status": "Success", "skills": loaded_skills, "routing": routing, "tasks": created_tasks_list}
 
 
 hermes_agent = HermesAgent()

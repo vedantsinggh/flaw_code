@@ -7,7 +7,7 @@ logger = logging.getLogger("forgeos.agent")
 # Ollama local models
 OLLAMA_MODELS = {
     "qwen2.5-coder:7b":    "qwen2.5-coder:7b",
-    "deepseek-r1:1.5b":    "deepseek-r1:1.5b",
+    "deepseek-r1:1.5b":    "qwen2.5-coder:7b",
 }
 
 # Groq cloud models (fast inference)

@@ -53,38 +53,43 @@ class SecurityAgent(BaseAgent):
         import re
         import os
         import subprocess
+        import os
+
+        repo_root = "/home/mirage/Projects/forge2"
+        app_name = task.get("app_name") or "my_app"
+        app_dir = os.path.join(repo_root, "forge", "demo", app_name)
 
         vulnerabilities = []
         
         # 1. Try to run bandit
         try:
-            res_bandit = subprocess.run(["bandit", "-r", "app", "-ll"], capture_output=True, text=True, timeout=30)
+            res_bandit = subprocess.run(["bandit", "-r", app_dir, "-ll"], capture_output=True, text=True, timeout=30)
             if res_bandit.returncode != 0:
                 vulnerabilities.append(f"Bandit warnings detected:\n{res_bandit.stdout}")
         except FileNotFoundError:
             # Fallback to python scanner
-            app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             secret_patterns = [
                 r"(?i)aws_access_key_id\s*=\s*['\"][A-Z0-9]{20}['\"]",
                 r"(?i)aws_secret_access_key\s*=\s*['\"][A-Za-z0-9/+=]{40}['\"]",
                 r"(?i)token\s*=\s*['\"]ghp_[A-Za-z0-9_]{36}['\"]",
             ]
-            for root, _, files in os.walk(app_dir):
-                for file in files:
-                    if file.endswith(".py"):
-                        fp = os.path.join(root, file)
-                        try:
-                            with open(fp, "r", encoding="utf-8") as f:
-                                content = f.read()
-                            if "shell=True" in content:
-                                vulnerabilities.append(f"Unsafe shell execution ('shell=True') in {os.path.relpath(fp)}")
-                            if "eval(" in content:
-                                vulnerabilities.append(f"Use of 'eval()' in {os.path.relpath(fp)}")
-                            for pat in secret_patterns:
-                                if re.search(pat, content):
-                                    vulnerabilities.append(f"Potential hardcoded secret in {os.path.relpath(fp)}")
-                        except Exception:
-                            pass
+            if os.path.exists(app_dir):
+                for root, _, files in os.walk(app_dir):
+                    for file in files:
+                        if file.endswith(".py"):
+                            fp = os.path.join(root, file)
+                            try:
+                                with open(fp, "r", encoding="utf-8") as f:
+                                    content = f.read()
+                                if "shell=True" in content:
+                                    vulnerabilities.append(f"Unsafe shell execution ('shell=True') in {os.path.relpath(fp, repo_root)}")
+                                if "eval(" in content:
+                                    vulnerabilities.append(f"Use of 'eval()' in {os.path.relpath(fp, repo_root)}")
+                                for pat in secret_patterns:
+                                    if re.search(pat, content):
+                                        vulnerabilities.append(f"Potential hardcoded secret in {os.path.relpath(fp, repo_root)}")
+                            except Exception:
+                                pass
 
         if vulnerabilities:
             issues_desc = "\n".join([f"- {v}" for v in vulnerabilities])

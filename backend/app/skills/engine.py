@@ -64,6 +64,49 @@ class SkillEngine:
         loaded = list(set(loaded))
         return loaded
 
+    def normalize_skills(self, skills: List[str]) -> List[str]:
+        """
+        Normalizes arbitrary skill names or technology names to the 14 predefined skills.
+        """
+        normalized = []
+        mapping = {
+            "html": "frontend",
+            "css": "frontend",
+            "js": "frontend",
+            "javascript": "frontend",
+            "ts": "frontend",
+            "typescript": "frontend",
+            "tailwind": "frontend",
+            "sql": "database",
+            "postgres": "database",
+            "mysql": "database",
+            "mongodb": "database",
+            "sqlite": "database",
+            "pytest": "testing",
+            "unittest": "testing",
+            "unit test": "testing",
+            "tests": "testing",
+            "py": "python",
+            "fastapi": "fastapi",
+            "react": "react",
+            "docker": "deployment",
+            "compose": "deployment",
+            "kubernetes": "deployment",
+            "git": "github",
+            "github": "github",
+            "security": "security",
+            "audit": "security",
+            "docs": "documentation",
+            "readme": "documentation",
+        }
+        for s in skills:
+            s_clean = s.strip().lower()
+            if s_clean in self.available_skills:
+                normalized.append(s_clean)
+            elif s_clean in mapping:
+                normalized.append(mapping[s_clean])
+        return list(set(normalized))
+
     def get_skill_rules(self, skill_name: str) -> Dict[str, str]:
         """
         Reads the SKILL.md, rules.md, and checklist.md from the file system
@@ -100,8 +143,12 @@ class SkillEngine:
         Builds a combined prompt string of rules and checklists for the loaded skills
         to be injected into the LLM system prompt.
         """
+        normalized_skills = self.normalize_skills(skills)
+        if not normalized_skills:
+            normalized_skills = ["architecture", "backend"]
+
         injected = "\n\n=== DYNAMICALLY LOADED SKILLS & RULES ===\n"
-        for skill in skills:
+        for skill in normalized_skills:
             data = self.get_skill_rules(skill)
             injected += f"\n--- Skill: {skill.upper()} ---\n"
             injected += f"Coding Rules:\n{data['rules']}\n"

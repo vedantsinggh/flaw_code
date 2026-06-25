@@ -399,8 +399,8 @@ async def slack_gateway(request: Request, background_tasks: BackgroundTasks):
 # ── Internal helpers ───────────────────────────────────────────────────────────
 async def _plan_and_execute(goal: str):
     """
-    Hermes plans the sprint, then immediately auto-executes every Planning-status
-    task through the full agent pipeline.  This makes Slack the sole trigger.
+    Hermes plans the sprint, then runs the Developer Agent sequentially on all tasks,
+    followed by Security, QA, and Documentation on the finished code directory.
     """
     logger.info(
         "\n"
@@ -411,12 +411,19 @@ async def _plan_and_execute(goal: str):
         "──────────────────────────────"
     )
     result = await hermes_agent.orchestrate_sprint(goal)
-    tasks = tasks_store.read_all()
+    created_tasks = result.get("tasks", [])
+    if not created_tasks:
+        logger.warning("No tasks created by Hermes.")
+        return
 
-    # Find every task in Planning status and auto-execute the pipeline
-    planning_tasks = [t for t in tasks.values() if t.get("status") == "Planning"]
-    for task in planning_tasks:
-        task_id = task["id"]
+    # 1. Run Developer Agent for all tasks sequentially
+    for idx, t_obj in enumerate(created_tasks):
+        task_id = t_obj["id"]
+        tasks = tasks_store.read_all()
+        task = tasks.get(task_id)
+        if not task:
+            continue
+
         logger.info(
             "\n"
             "──────────────────────────────\n"
@@ -425,25 +432,126 @@ async def _plan_and_execute(goal: str):
             f"Task:     {task_id} — {task['title']}\n"
             "──────────────────────────────"
         )
-        await _run_pipeline_autopilot(task_id)
+        await _check_pause()
+        task["status"] = "In Progress"
+        tasks[task_id] = task
+        tasks_store.write_all(tasks)
+
+        await developer_agent.execute_task(task_id)
+        await asyncio.sleep(1)
+
+    # After developer phase is done, run Security, QA, and Docs on the last task of the sprint
+    last_task = created_tasks[-1]
+    last_task_id = last_task["id"]
+
+    # 2. Run Security Agent
+    await _check_pause()
+    logger.info(
+        "\n"
+        "──────────────────────────────\n"
+        "Invoking: Security Agent\n"
+        "Reason:   Security Audit Required\n"
+        f"Task:     {last_task_id}\n"
+        "──────────────────────────────"
+    )
+    await security_agent.audit_security(last_task_id)
+    await asyncio.sleep(1)
+
+    # 3. Run QA Agent
+    await _check_pause()
+    logger.info(
+        "\n"
+        "──────────────────────────────\n"
+        "Invoking: QA Agent\n"
+        "Reason:   QA Verification\n"
+        f"Task:     {last_task_id}\n"
+        "──────────────────────────────"
+    )
+    await qa_agent.verify_quality(last_task_id)
+    await asyncio.sleep(1)
+
+    # 4. Run Documentation Agent (which sets pending_approval = True)
+    await _check_pause()
+    logger.info(
+        "\n"
+        "──────────────────────────────\n"
+        "Invoking: Documentation Agent\n"
+        "Reason:   Documentation Generation\n"
+        f"Task:     {last_task_id}\n"
+        "──────────────────────────────"
+    )
+    await documentation_agent.generate_documentation(last_task_id)
 
 
 async def _finalise_sprint(task_id: str, task: dict, source: str):
     """
-    Marks a task as Done and logs it.
+    Pushes final files from forge/demo/<app_name> to GitHub, opens a PR,
+    and marks all sprint tasks as Done.
     """
+    from app.github.client import github_client
+
     tasks = tasks_store.read_all()
-    task["pending_approval"] = False
-    task["status"] = "Done"
-    task["updated_at"] = datetime.utcnow().isoformat()
-    tasks[task_id] = task
+    app_name = task.get("app_name") or "my_app"
+    repo_root = "/home/mirage/Projects/forge2"
+    app_dir = os.path.join(repo_root, "forge", "demo", app_name)
+
+    # Find all files in the app directory to commit
+    files_to_commit = []
+    if os.path.exists(app_dir):
+        for root, _, files in os.walk(app_dir):
+            for file in files:
+                files_to_commit.append(os.path.join(root, file))
+
+    if files_to_commit:
+        branch_name = f"feature/{task_id}"
+        await slack_client.post_message(
+            "#sprint-main",
+            f"🚀 *GitHub Deploy*: Pushing {len(files_to_commit)} files to GitHub branch `{branch_name}`...",
+        )
+        try:
+            # Create branch remotely
+            await github_client.create_branch(branch_name)
+            # Create commit with all files
+            git_success = await github_client.create_commit(
+                branch=branch_name,
+                commit_message=f"feat: implement {app_name} application",
+                files_changed=files_to_commit,
+            )
+            if git_success:
+                pr_data = await github_client.create_pull_request(
+                    title=f"feat: implement {app_name} application",
+                    body=f"Deploys the final reviewed code for goal: {task.get('description', '')}",
+                    head_branch=branch_name,
+                    base_branch="main",
+                )
+                await slack_client.post_message(
+                    "#sprint-main",
+                    f"🔀 *PR Opened*: PR #{pr_data['id']} \"{pr_data['title']}\"\n{pr_data['url']}",
+                )
+        except Exception as e:
+            logger.error(f"Failed to push code to GitHub: {e}")
+            await slack_client.post_message(
+                "#sprint-main",
+                f"❌ *GitHub Deploy Failed*: {str(e)}"
+            )
+            raise
+    else:
+        logger.warning(f"No files found under {app_dir} to deploy.")
+
+    # Update status of all tasks associated with this app/sprint to Done
+    for t_id, t in list(tasks.items()):
+        if t.get("app_name") == app_name:
+            t["pending_approval"] = False
+            t["status"] = "Done"
+            t["updated_at"] = datetime.utcnow().isoformat()
+            tasks[t_id] = t
     tasks_store.write_all(tasks)
 
-    event_log_store.append_event(source, "Sprint Completed", f"Task {task_id} completed successfully.", task_id)
+    event_log_store.append_event(source, "Sprint Completed", f"All tasks for app '{app_name}' completed successfully.", task_id)
 
     await slack_client.post_message(
         "#sprint-main",
-        f"✅ *Task Completed*: Task `{task_id}` (\"{task['title']}\") marked as Done via {source}.",
+        f"✅ *Sprint Completed*: All tasks for `{app_name}` marked as Done via {source}.",
     )
 
 

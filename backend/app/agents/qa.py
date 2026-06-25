@@ -41,12 +41,19 @@ class QAAgent(BaseAgent):
 
         import subprocess
 
+        import subprocess
+        import os
+
+        repo_root = "/home/mirage/Projects/forge2"
+        app_name = task.get("app_name") or "my_app"
+        app_dir = os.path.join(repo_root, "forge", "demo", app_name)
+
         # 1. Syntax check
         syntax_errors = 0
         syntax_output = ""
         try:
-            logger.info("Running syntax check...")
-            res_syntax = subprocess.run(["python", "-m", "compileall", "app"], capture_output=True, text=True)
+            logger.info(f"Running syntax check on {app_dir}...")
+            res_syntax = subprocess.run(["python", "-m", "compileall", app_dir], capture_output=True, text=True)
             if res_syntax.returncode != 0 and "Listing" not in res_syntax.stdout:
                 if "***" in res_syntax.stdout:
                     syntax_errors = 1
@@ -54,20 +61,20 @@ class QAAgent(BaseAgent):
         except Exception as e:
             logger.error(f"Failed to run compileall: {e}")
 
-        # 2. Pytest execution
+        # 2. Pytest execution (only if tests directory exists in the demo app)
         pytest_failures = 0
         pytest_output = ""
-        try:
-            logger.info("Running pytest...")
-            res_pytest = subprocess.run(["pytest", "tests"], capture_output=True, text=True, timeout=30)
-            pytest_output = res_pytest.stdout + "\n" + res_pytest.stderr
-            if res_pytest.returncode != 0:
+        tests_dir = os.path.join(app_dir, "tests")
+        if os.path.exists(tests_dir):
+            try:
+                logger.info(f"Running pytest on {tests_dir}...")
+                res_pytest = subprocess.run(["pytest", tests_dir], capture_output=True, text=True, timeout=30)
+                pytest_output = res_pytest.stdout + "\n" + res_pytest.stderr
+                if res_pytest.returncode != 0:
+                    pytest_failures = 1
+            except Exception as e:
                 pytest_failures = 1
-        except FileNotFoundError:
-            raise RuntimeError("pytest is not installed in the environment. Cannot perform QA validation.")
-        except Exception as e:
-            pytest_failures = 1
-            pytest_output = str(e)
+                pytest_output = str(e)
 
         if syntax_errors > 0 or pytest_failures > 0:
             error_msg = f"QA Validation failed.\nSyntax Errors: {syntax_errors}\nPytest Failures: {pytest_failures}\nDetails:\n{syntax_output}\n{pytest_output}"
