@@ -9,6 +9,7 @@ services:
       - ./logs:/app/logs
       - ./memory:/app/memory
       - ./skills:/app/skills
+      - .:/home/mirage/Projects/forge2
     env_file:
       - .env
     network_mode: host

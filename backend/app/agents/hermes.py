@@ -93,8 +93,21 @@ class HermesAgent(BaseAgent):
         slack_client.log_event("Hermes", "Decomposing", f"Goal: {goal}")
         system_prompt = (
             "You are Hermes, the Principal Staff AI Architect of ForgeOS. Decompose software engineering "
-            "goals into structured task plans. Return a JSON object with a `tasks` list. Each task must "
-            "contain: id, title, description, priority, difficulty, skills."
+            "goals into structured task plans. Return ONLY a valid raw JSON object. Do NOT wrap it in python "
+            "variable assignments, comments, or any other explanations. Ensure the root is a JSON object. "
+            "Schema:\n"
+            "{\n"
+            "  \"tasks\": [\n"
+            "    {\n"
+            "      \"id\": \"string\",\n"
+            "      \"title\": \"string\",\n"
+            "      \"description\": \"string\",\n"
+            "      \"priority\": int,\n"
+            "      \"difficulty\": int,\n"
+            "      \"skills\": [\"string\"]\n"
+            "    }\n"
+            "  ]\n"
+            "}"
         )
         prompt = f"Decompose this engineering goal into 3 implementation tasks: \"{goal}\"."
         plan_raw = await self.call_llm(prompt, system_prompt, routing["selected_model"])
@@ -131,6 +144,15 @@ class HermesAgent(BaseAgent):
                         if isinstance(val, list) and len(val) > 0 and isinstance(val[0], dict) and ("title" in val[0] or "description" in val[0]):
                             tasks_list = val
                             break
+                # If still not found, check if dictionary values are task dictionaries themselves
+                if not tasks_list:
+                    is_task_map = True
+                    for val in plan_json.values():
+                        if not isinstance(val, dict) or ("title" not in val and "description" not in val):
+                            is_task_map = False
+                            break
+                    if is_task_map and len(plan_json) > 0:
+                        tasks_list = list(plan_json.values())
             elif isinstance(plan_json, list):
                 tasks_list = plan_json
 

@@ -6,8 +6,8 @@ logger = logging.getLogger("forgeos.agent")
 # ── Model name → provider mapping ─────────────────────────────────────────────
 # Ollama local models
 OLLAMA_MODELS = {
-    "qwen2.5-coder:7b":    "tinyllama",
-    "deepseek-r1:1.5b":    "tinyllama",
+    "qwen2.5-coder:7b":    "qwen2.5-coder:7b",
+    "deepseek-r1:1.5b":    "deepseek-r1:1.5b",
 }
 
 # Groq cloud models (fast inference)
@@ -29,7 +29,9 @@ def _resolve_ollama_model(model_key: str) -> str:
     # Sensible fallback
     if "deepseek" in key:
         return "deepseek-r1:1.5b"
-    return "qwen2.5-coder:latest"
+    if "qwen" in key:
+        return "qwen2.5-coder:7b"
+    return model_key
 
 
 class BaseAgent:
