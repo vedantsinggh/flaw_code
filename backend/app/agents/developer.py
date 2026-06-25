@@ -102,8 +102,13 @@ class DeveloperAgent(BaseAgent):
                         filename = "script.js"
                     elif "py" in lang or "python" in lang or "python" in task["title"].lower() or "fastapi" in task["description"].lower():
                         filename = "main.py"
+                    elif "php" in lang or "php" in task["title"].lower() or "php" in task["description"].lower() or "laravel" in task["description"].lower():
+                        filename = "index.php"
+                    elif "sh" in lang or "bash" in lang or "shell" in task["title"].lower() or "shell" in task["description"].lower():
+                        filename = "run.sh"
                     else:
                         filename = f"task_{task_id}_{block_idx}.txt"
+
 
                 filename = os.path.basename(filename) if "/" not in filename else filename
                 if not os.path.isabs(filename):
@@ -149,21 +154,37 @@ class DeveloperAgent(BaseAgent):
         # Run the code
         import subprocess
         for full_path in files_written:
-            if full_path.endswith(".py"):
+            ext = os.path.splitext(full_path)[1].lower()
+            if ext in [".py", ".php", ".js", ".sh"]:
                 execution_output = ""
+                cmd = []
+                lang_name = ""
+                if ext == ".py":
+                    cmd = ["python", full_path]
+                    lang_name = "Python"
+                elif ext == ".php":
+                    cmd = ["php", full_path]
+                    lang_name = "PHP"
+                elif ext == ".js":
+                    cmd = ["node", full_path]
+                    lang_name = "Node.js"
+                elif ext == ".sh":
+                    cmd = ["bash", full_path]
+                    lang_name = "Bash"
+
                 try:
-                    res = subprocess.run(["python", full_path], capture_output=True, text=True, timeout=5)
+                    res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
                     execution_output = f"STDOUT:\n{res.stdout}\nSTDERR:\n{res.stderr}"
                 except Exception as e:
                     # Read the written file to pass to prediction
                     with open(full_path, "r", encoding="utf-8") as f:
                         file_content = f.read()
                     predict_prompt = (
-                        f"Analyze this python script and predict its output if run. "
-                        f"Here is the script:\n```python\n{file_content}\n```\n"
+                        f"Analyze this {lang_name} script and predict its output if run. "
+                        f"Here is the script:\n```{ext[1:]}\n{file_content}\n```\n"
                         "Return ONLY the exact predicted terminal output (stdout/stderr). Do not add any explanatory text."
                     )
-                    execution_output = await self.call_llm(predict_prompt, "You are a Python code execution simulator.", task["model"])
+                    execution_output = await self.call_llm(predict_prompt, f"You are a {lang_name} code execution simulator.", task["model"])
                 
                 await slack_client.post_message(
                     "#agent-log",
@@ -176,6 +197,7 @@ class DeveloperAgent(BaseAgent):
                         lf.write(execution_output)
                 except Exception:
                     pass
+
 
         task["status"] = "Review"
         tasks[task_id] = task
@@ -221,10 +243,19 @@ class DeveloperAgent(BaseAgent):
         app_name = task.get("app_name") or "my_app"
         app_dir = os.path.join(repo_root, "forge", "demo", app_name)
         
-        # Read the existing file in the directory
-        existing_code = ""
+        # Determine the file to revise
         filename = "main.py"
+        if os.path.exists(app_dir):
+            files = [f for f in os.listdir(app_dir) if os.path.isfile(os.path.join(app_dir, f)) and not f.endswith(".log")]
+            if files:
+                preferred = [f for f in files if os.path.splitext(f)[1] in [".py", ".php", ".js", ".sh", ".html"]]
+                if preferred:
+                    filename = preferred[0]
+                else:
+                    filename = files[0]
+                    
         full_path = os.path.join(app_dir, filename)
+        existing_code = ""
         if os.path.exists(full_path):
             try:
                 with open(full_path, "r", encoding="utf-8") as f:
@@ -232,15 +263,24 @@ class DeveloperAgent(BaseAgent):
             except Exception:
                 pass
         
+        ext = os.path.splitext(filename)[1].lower() or ".py"
+        lang_name = "Python"
+        if ext == ".php":
+            lang_name = "PHP"
+        elif ext == ".js":
+            lang_name = "JavaScript"
+        elif ext == ".sh":
+            lang_name = "Bash"
+
         # Call LLM to revise the code
         system_prompt = (
-            "You are the Lead Developer Agent of ForgeOS. Revise the provided code based on the user's change request."
+            f"You are the Lead Developer Agent of ForgeOS. Revise the provided {lang_name} code based on the user's change request."
         )
         prompt = (
             f"Original Task: {task['title']} - {task['description']}\n"
-            f"Existing Code:\n```python\n{existing_code}\n```\n"
+            f"Existing Code ({filename}):\n```{ext[1:]}\n{existing_code}\n```\n"
             f"User's Change Request: {change_request}\n"
-            f"Provide the complete revised Python code in a single code block."
+            f"Provide the complete revised {lang_name} code in a single code block."
         )
         
         revised_response = await self.call_llm(prompt, system_prompt, task["model"])
@@ -265,15 +305,26 @@ class DeveloperAgent(BaseAgent):
         # Run the revised code
         import subprocess
         execution_output = ""
-        try:
-            res = subprocess.run(["python", full_path], capture_output=True, text=True, timeout=5)
-            execution_output = f"STDOUT:\n{res.stdout}\nSTDERR:\n{res.stderr}"
-        except Exception as e:
-            predict_prompt = (
-                f"Analyze this revised python script and predict its output if run.\n```python\n{revised_content}\n```\n"
-                "Return ONLY the exact predicted terminal output. No explanations."
-            )
-            execution_output = await self.call_llm(predict_prompt, "You are a Python code execution simulator.", task["model"])
+        if ext in [".py", ".php", ".js", ".sh"]:
+            cmd = []
+            if ext == ".py":
+                cmd = ["python", full_path]
+            elif ext == ".php":
+                cmd = ["php", full_path]
+            elif ext == ".js":
+                cmd = ["node", full_path]
+            elif ext == ".sh":
+                cmd = ["bash", full_path]
+
+            try:
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+                execution_output = f"STDOUT:\n{res.stdout}\nSTDERR:\n{res.stderr}"
+            except Exception as e:
+                predict_prompt = (
+                    f"Analyze this revised {lang_name} script and predict its output if run.\n```{ext[1:]}\n{revised_content}\n```\n"
+                    "Return ONLY the exact predicted terminal output. No explanations."
+                )
+                execution_output = await self.call_llm(predict_prompt, f"You are a {lang_name} code execution simulator.", task["model"])
 
         await slack_client.post_message(
             "#agent-log",
@@ -283,13 +334,14 @@ class DeveloperAgent(BaseAgent):
         status_report = (
             f"📊 *OpenClaw Revision Status Report*\n\n"
             f"*What I Did*:\n"
-            f"- Revised the Python code to support: \"{change_request}\".\n"
+            f"- Revised the {lang_name} code to support: \"{change_request}\".\n"
             f"- Re-executed the script and verified the output.\n\n"
             f"*What's Left*:\n"
             f"- Awaiting your review and final approval.\n\n"
             f"*What Needs Your Call*:\n"
             f"- Please let me know if this revision is correct or if further changes are needed."
         )
+
         await slack_client.post_message("#sprint-main", status_report)
         await slack_client.post_message("#agent-coder", status_report)
         return True
