@@ -48,7 +48,17 @@ class BaseAgent:
         2. If model matches a known Ollama model → Ollama local API
         3. Fallback → Ollama with qwen2.5-coder
         """
+        from app.slack.client import slack_client
+        from app.db.store import event_log_store
+        
         logger.info(f"[{self.name}] model={model} prompt_len={len(prompt)}")
+        
+        # ── Show processing indicator to user ─────────────────────────────────
+        await slack_client.post_message(
+            "#agent-log",
+            f"⏳ *[{self.name}]* Calling `{model}` API... (request size: {len(prompt)} chars)"
+        )
+        event_log_store.append_event(self.name, "LLM Request", f"Calling model {model}")
 
         if settings.SIMULATION_MODE:
             raise RuntimeError(f"[{self.name}] Simulation mode is enabled, but mock data and simulation fallbacks have been removed.")
@@ -59,8 +69,44 @@ class BaseAgent:
                 raise RuntimeError(f"[{self.name}] Live LLM call returned empty response")
             return result
         except Exception as e:
-            logger.error(f"[{self.name}] Live LLM call failed ({model}): {e}")
-            raise
+            err_msg = f"{type(e).__name__}: {str(e)}"
+            logger.error(f"[{self.name}] Live LLM call failed ({model}): {err_msg}")
+            
+            # Post error to user/Slack
+            await slack_client.post_message(
+                "#sprint-main",
+                f"⚠️ *[{self.name}]* LLM call to `{model}` failed: `{err_msg}`."
+            )
+            event_log_store.append_event("System", "LLM Failure", f"Model {model} failed: {err_msg}")
+            
+            # ── Fallback to Groq API ──────────────────────────────────────────
+            if not model.lower().startswith("groq/"):
+                fallback_model = "groq/deepseek-r1-distill-70b"
+                logger.warning(f"[{self.name}] Falling back to Groq API ({fallback_model})...")
+                await slack_client.post_message(
+                    "#agent-log",
+                    f"🔄 *[{self.name}]* Falling back to Groq API using model `{fallback_model}`..."
+                )
+                event_log_store.append_event(self.name, "LLM Fallback", f"Calling fallback {fallback_model}")
+                try:
+                    fallback_result = await self._call_groq(prompt, system_prompt, fallback_model)
+                    if fallback_result:
+                        logger.info(f"[{self.name}] Fallback to Groq succeeded.")
+                        await slack_client.post_message(
+                            "#agent-log",
+                            f"✅ *[{self.name}]* Fallback to Groq succeeded."
+                        )
+                        return fallback_result
+                except Exception as fallback_err:
+                    fallback_err_msg = f"{type(fallback_err).__name__}: {str(fallback_err)}"
+                    logger.error(f"[{self.name}] Fallback to Groq also failed: {fallback_err_msg}")
+                    await slack_client.post_message(
+                        "#sprint-main",
+                        f"❌ *[{self.name}]* Fallback to Groq also failed: `{fallback_err_msg}`"
+                    )
+                    event_log_store.append_event("System", "Fallback Failure", f"Groq fallback failed: {fallback_err_msg}")
+                    raise fallback_err
+            raise e
 
     async def _call_live(self, prompt: str, system_prompt: str, model: str) -> str:
         """Routes to the correct provider and returns the raw response text."""
@@ -85,7 +131,7 @@ class BaseAgent:
         logger.info(f"[{self.name}] → Groq: {groq_model}")
 
         import httpx
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=180.0) as client:
             res = await client.post(
                 "https://api.groq.com/openai/v1/chat/completions",
                 headers={
@@ -111,7 +157,7 @@ class BaseAgent:
         
         import httpx
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
+            async with httpx.AsyncClient(timeout=600.0) as client:
                 payload = {
                     "model": ollama_model,
                     "messages": [

@@ -40,8 +40,6 @@ class QAAgent(BaseAgent):
         tasks_store.write_all(tasks)
 
         import subprocess
-
-        import subprocess
         import os
 
         repo_root = "/home/mirage/Projects/forge2"
@@ -53,7 +51,7 @@ class QAAgent(BaseAgent):
         syntax_output = ""
         try:
             logger.info(f"Running syntax check on {app_dir}...")
-            res_syntax = subprocess.run(["python", "-m", "compileall", app_dir], capture_output=True, text=True)
+            res_syntax = subprocess.run(["python", "-m", "compileall", app_dir], capture_output=True, text=True, timeout=60)
             if res_syntax.returncode != 0 and "Listing" not in res_syntax.stdout:
                 if "***" in res_syntax.stdout:
                     syntax_errors = 1
@@ -68,7 +66,7 @@ class QAAgent(BaseAgent):
         if os.path.exists(tests_dir):
             try:
                 logger.info(f"Running pytest on {tests_dir}...")
-                res_pytest = subprocess.run(["pytest", tests_dir], capture_output=True, text=True, timeout=30)
+                res_pytest = subprocess.run(["pytest", tests_dir], capture_output=True, text=True, timeout=120)
                 pytest_output = res_pytest.stdout + "\n" + res_pytest.stderr
                 if res_pytest.returncode != 0:
                     pytest_failures = 1

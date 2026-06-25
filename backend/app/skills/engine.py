@@ -13,7 +13,8 @@ class SkillEngine:
         self.available_skills = [
             "backend", "frontend", "react", "fastapi", "database",
             "testing", "security", "documentation", "deployment",
-            "github", "review", "architecture", "debugging", "python"
+            "github", "review", "architecture", "debugging", "python",
+            "hello-world"
         ]
 
     def classify_and_load(self, task_description: str) -> List[str]:
@@ -55,6 +56,8 @@ class SkillEngine:
             loaded.append("debugging")
         if any(w in task_lower for w in ["architecture", "structure", "system", "uml", "mermaid", "flowchart"]):
             loaded.append("architecture")
+        if any(w in task_lower for w in ["greet", "hello", "say hello"]):
+            loaded.append("hello-world")
 
         # Fallback to general skills if nothing matched
         if not loaded:

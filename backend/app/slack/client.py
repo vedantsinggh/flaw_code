@@ -31,6 +31,8 @@ class SlackClient:
             "#human-review": [],
             "#system-health": [],
             "#agent-log": [],
+            "#agent-coder": [],
+            "#agent-orchestrator": [],
         }
         if not os.path.exists(self.channel_log_path):
             with open(self.channel_log_path, "w") as f:

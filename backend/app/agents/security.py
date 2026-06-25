@@ -53,7 +53,6 @@ class SecurityAgent(BaseAgent):
         import re
         import os
         import subprocess
-        import os
 
         repo_root = "/home/mirage/Projects/forge2"
         app_name = task.get("app_name") or "my_app"
@@ -63,7 +62,7 @@ class SecurityAgent(BaseAgent):
         
         # 1. Try to run bandit
         try:
-            res_bandit = subprocess.run(["bandit", "-r", app_dir, "-ll"], capture_output=True, text=True, timeout=30)
+            res_bandit = subprocess.run(["bandit", "-r", app_dir, "-ll"], capture_output=True, text=True, timeout=120)
             if res_bandit.returncode != 0:
                 vulnerabilities.append(f"Bandit warnings detected:\n{res_bandit.stdout}")
         except FileNotFoundError:

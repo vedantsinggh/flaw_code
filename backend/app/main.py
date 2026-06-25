@@ -88,6 +88,9 @@ async def _run_pipeline_autopilot(task_id: str):
 async def startup_event():
     logger.info("ForgeOS starting up…")
     await health_monitor.run_checks()
+    # Trigger autonomous run in the background
+    asyncio.create_task(_trigger_autonomous_run())
+
     event_log_store.append_event("System", "Startup", "ForgeOS API is online and ready.")
 
 
@@ -390,10 +393,50 @@ async def slack_gateway(request: Request, background_tasks: BackgroundTasks):
                 }
                 # Re-dispatch in background
                 background_tasks.add_task(_dispatch_slack_text_command, mock_request_body)
+            else:
+                # Direct conversational message handler
+                background_tasks.add_task(_dispatch_conversational_message, text, channel, user)
         else:
             logger.info(f"[SLACK GATEWAY] Ignoring unsupported inner event type: {inner_type}")
 
     return {"ok": True}
+
+
+async def _dispatch_conversational_message(text: str, channel: str, user: str):
+    """
+    Dispatches natural language Slack messages to the correct agent loop.
+    """
+    text_clean = text.strip()
+    if not text_clean:
+        return
+
+    # Check if this is a change request for Developer Agent (OpenClaw)
+    is_change_request = any(w in text_clean.lower() for w in ["change", "revise", "modify", "update", "fix", "instead", "add a", "remove"])
+    
+    tasks = tasks_store.read_all()
+    last_task_id = None
+    if tasks:
+        # Get the most recently created task
+        sorted_tasks = sorted(tasks.values(), key=lambda t: t.get("id", ""), reverse=True)
+        if sorted_tasks:
+            last_task_id = sorted_tasks[0]["id"]
+
+    if is_change_request and last_task_id:
+        await developer_agent.revise_task(last_task_id, text_clean)
+    else:
+        await hermes_agent.chat(text_clean, user)
+
+
+async def _trigger_autonomous_run():
+    await asyncio.sleep(5)
+    logger.info("[AUTONOMOUS RUN] Triggering scheduled autonomous run...")
+    await slack_client.post_message(
+        "#sprint-main",
+        "⏰ *Scheduled Event*: Triggering daily autonomous health run."
+    )
+    # Start a sprint with a simple task
+    await _plan_and_execute("Create a daily system report script")
+
 
 
 # ── Internal helpers ───────────────────────────────────────────────────────────

@@ -63,7 +63,7 @@ class HermesAgent(BaseAgent):
             "Reason:   Model Selection\n"
             "──────────────────────────────"
         )
-        routing = intelligent_router.route_task(goal)
+        routing = intelligent_router.route_task(goal, task_type="planning")
         await slack_client.post_message(
             "#sprint-main",
             f"🧠 *Model Selected*: `{routing['selected_model']}` (confidence: {routing['confidence'] * 100:.0f}%)",
@@ -305,6 +305,14 @@ class HermesAgent(BaseAgent):
         })
         memory_store.write_all(memory)
 
+        # Post the plan overview first
+        plan_overview_msg = f"📋 *Hermes Action Plan for Goal*: \"{goal}\"\n"
+        for i, t in enumerate(tasks_list):
+            t_title = t.get("title") or t.get("task_title") or t.get("name") or t.get("id") or f"Task {i+1}"
+            plan_overview_msg += f"{i+1}. *{t_title}*\n"
+        await slack_client.post_message("#sprint-main", plan_overview_msg)
+        await slack_client.post_message("#agent-orchestrator", plan_overview_msg)
+
         await slack_client.post_message(
             "#sprint-main",
             f"✅ *Planning Complete!* Hermes decomposed the goal into {len(tasks_list)} tasks.",
@@ -312,6 +320,106 @@ class HermesAgent(BaseAgent):
         slack_client.log_event("Hermes", "Planning Complete", f"{len(tasks_list)} tasks created for: {goal}")
 
         return {"status": "Success", "skills": loaded_skills, "routing": routing, "tasks": created_tasks_list}
+
+    async def chat(self, message: str, user: str = "unknown") -> str:
+        """
+        Handles conversational chat with the user:
+        1. Recalls architectural memory or facts from memory_store.
+        2. Scans for new facts to remember.
+        3. Dynamically identifies and loads hello-world or other skills.
+        4. Calls LLM with conversational prompt.
+        5. Saves any new facts to memory.
+        """
+        # Load memory facts
+        memory = memory_store.read_all() or {}
+        user_facts = memory.get("user_facts", [])
+        
+        # Skill classification
+        from app.skills.engine import skill_engine
+        loaded_skills = skill_engine.classify_and_load(message)
+        
+        # Check if hello-world skill is triggered
+        if "hello-world" in loaded_skills:
+            await slack_client.post_message(
+                "#agent-log",
+                "⚡ *Skill Triggered*: `hello-world` detected in query."
+            )
+            # Execute hello-world skill automatically
+            # Step 1: Read the person's name from the input
+            # Step 2: Generate a personalized greeting
+            # Step 3: Save the greeting to a file called greetings.md
+            greeting_prompt = (
+                f"You are the hello-world skill handler. Read the user input: '{message}'. "
+                "Extract the name of the person/group to greet and generate a personalized, friendly greeting. "
+                "Return ONLY the greeting text. Do not wrap in quotes or code blocks."
+            )
+            greeting_msg = await self.call_llm(greeting_prompt, "You are a friendly greeting generator.", "qwen2.5-coder:7b")
+            
+            # Save greetings.md
+            greetings_path = "/home/mirage/Projects/forge2/greetings.md"
+            try:
+                with open(greetings_path, "w", encoding="utf-8") as f:
+                    f.write(f"# Personalized Greeting\n\n{greeting_msg}\n")
+                await slack_client.post_message(
+                    "#agent-log",
+                    f"file:///home/mirage/Projects/forge2/greetings.md created containing: {greeting_msg}"
+                )
+                await slack_client.post_message(
+                    "#agent-log",
+                    "✅ *hello-world skill success*: Saved greeting to `greetings.md`."
+                )
+                await slack_client.post_message(
+                    "#sprint-main",
+                    f"👋 *hello-world skill fired*: {greeting_msg}"
+                )
+                return greeting_msg
+            except Exception as e:
+                err = f"Failed to save greetings.md: {e}"
+                await slack_client.post_message("#agent-log", f"❌ *hello-world skill error*: {err}")
+                return f"Greeting generated, but failed to save file: {greeting_msg}"
+
+        # Standard conversation model selection
+        selected_model = "qwen2.5-coder:7b"
+        
+        # Memory context injection
+        facts_context = ""
+        if user_facts:
+            facts_context = "\nFacts you remember about the user from earlier sessions:\n" + "\n".join([f"- {f}" for f in user_facts])
+            
+        system_prompt = (
+            "You are Hermes, the autonomous orchestrator agent of ForgeOS.\n"
+            "You have a persistent memory. Here is your memory context:\n"
+            f"{facts_context}\n\n"
+            "If the user tells you a new fact about themselves (e.g. name, preferences, choices), "
+            "you MUST extract it and include `[STORE_FACT: <the exact fact>]` in your response "
+            "so the system can save it for future sessions. Example: `[STORE_FACT: User's favorite color is blue]`.\n"
+            "Reply to the user's message in a professional, helpful, and conversational tone."
+        )
+        
+        response = await self.call_llm(message, system_prompt, selected_model)
+        
+        # Check if we need to store a new fact
+        import re
+        fact_match = re.search(r"\[STORE_FACT:\s*([^\]]+)\]", response)
+        if fact_match:
+            new_fact = fact_match.group(1).strip()
+            # Clean response of the tag
+            response = response.replace(fact_match.group(0), "").strip()
+            
+            if new_fact not in user_facts:
+                user_facts.append(new_fact)
+                memory["user_facts"] = user_facts
+                memory_store.write_all(memory)
+                await slack_client.post_message(
+                    "#agent-log",
+                    f"🧠 *Memory Stored*: Saved new fact: \"{new_fact}\""
+                )
+                
+        await slack_client.post_message(
+            "#sprint-main",
+            f"🧠 *Hermes*: {response}"
+        )
+        return response
 
 
 hermes_agent = HermesAgent()

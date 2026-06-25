@@ -25,7 +25,7 @@ class GitHubClient:
                 "Authorization": f"token {settings.GITHUB_TOKEN}",
                 "Accept": "application/vnd.github.v3+json"
             }
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=60.0) as client:
                 # 1. Get SHA of main branch
                 ref_url = f"https://api.github.com/repos/{owner_repo}/git/ref/heads/main"
                 r = await client.get(ref_url, headers=headers)
@@ -66,7 +66,7 @@ class GitHubClient:
                 "Authorization": f"token {settings.GITHUB_TOKEN}",
                 "Accept": "application/vnd.github.v3+json"
             }
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=60.0) as client:
                 for file_path in files_changed:
                     rel_path = os.path.relpath(file_path, "/home/mirage/Projects/forge2")
                     if rel_path.startswith(".."):
@@ -116,7 +116,7 @@ class GitHubClient:
                 "Authorization": f"token {settings.GITHUB_TOKEN}",
                 "Accept": "application/vnd.github.v3+json"
             }
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=60.0) as client:
                 url = f"https://api.github.com/repos/{owner_repo}/pulls"
                 payload = {
                     "title": title,
@@ -165,7 +165,7 @@ class GitHubClient:
                 "Authorization": f"token {settings.GITHUB_TOKEN}",
                 "Accept": "application/vnd.github.v3+json"
             }
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=60.0) as client:
                 url = f"https://api.github.com/repos/{owner_repo}/issues"
                 payload = {
                     "title": title,

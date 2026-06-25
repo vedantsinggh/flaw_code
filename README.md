@@ -103,3 +103,33 @@ npm run dev
 ## 🛡️ Live Slack & GitHub MCP Integration
 
 For detailed instructions on configuring live integrations, please consult the [Slack & GitHub MCP guide in ARCHITECTURE.md](file:///home/mirage/Projects/forge2/ARCHITECTURE.md#6-how-to-integrate-slack--github-model-context-protocol-mcp).
+
+---
+
+## 🎓 Qualifier Starters Verification Guide
+
+This system includes fully functional implementations for the Starter 1 and Starter 2 qualifiers.
+
+### Starter 1 · OpenClaw Mastery (The Hands)
+This loop demonstrates direct coding agent command, code execution, revision, and status reporting.
+1. **Trigger Task**: Post a natural language coding task in `#sprint-main` (e.g. `"Create a Python script that calculates the factorial of 5"`).
+2. **Execution & Log**: The Developer Agent (OpenClaw) will write the script under `forge/demo/<app_name>/main.py`, automatically execute it (using `subprocess` or LLM-based simulation if running in a restricted sandbox), and post the terminal output to `#agent-log`.
+3. **Status Format**: The agent reports its progress to `#sprint-main` using the requested status format:
+   - **What I Did**
+   - **What's Left**
+   - **What Needs Your Call**
+4. **Code Revision**: Post a change request in `#sprint-main` (e.g. `"Change it to support floats instead"` or `"Add print statements"`). OpenClaw will automatically fetch the last task, modify the code, execute it, post the updated output to `#agent-log`, and re-report the status.
+
+### Starter 2 · Hermes Agent Mastery (The Brain)
+This loop demonstrates persistent memory recall, dynamic skill engine execution, plan-before-action planning, and event/schedule-based autonomous runs.
+1. **Memory Recall**:
+   - Tell Hermes a fact: Post `"Remember that my favorite programming language is Go"` in `#sprint-main`. Hermes will save this fact to `memory.json` and post a confirmation to `#agent-log`.
+   - Ask Hermes to recall the fact: Post `"What is my favorite programming language?"`. Hermes will fetch the stored memory facts and answer you in `#sprint-main`.
+2. **Automatic Skill Execution**:
+   - Trigger a custom skill: Post `"Say hello to the NMG Labs team"`. The Skill Engine matches this to the `hello-world` skill trigger (configured under `skills/hello-world/SKILL.md`).
+   - Action: Hermes automatically processes the skill, generates a friendly greeting, saves it to `greetings.md`, and logs the skill action to `#agent-log`.
+3. **Plan Before Action**:
+   - When a goal/sprint is initiated (e.g. `/forge sprint "Build a FastAPI CRUD app"`), Hermes decomposes the goal and posts a structured plan list overview to `#sprint-main` and `#agent-orchestrator` *before* committing or starting execution.
+4. **Autonomous Run**:
+   - The system schedules an autonomous run on startup. Five seconds after the server boots, it posts to `#sprint-main` (`⏰ Scheduled Event: Triggering daily autonomous health run`) and initiates an automated system report generation sprint.
+

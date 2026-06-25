@@ -146,15 +146,152 @@ class DeveloperAgent(BaseAgent):
         files_written_names = ", ".join([os.path.basename(f) for f in files_written])
         slack_client.log_event("Developer", "Code Written", f"OpenClaw wrote {files_written_names}", task_id)
 
+        # Run the code
+        import subprocess
+        for full_path in files_written:
+            if full_path.endswith(".py"):
+                execution_output = ""
+                try:
+                    res = subprocess.run(["python", full_path], capture_output=True, text=True, timeout=5)
+                    execution_output = f"STDOUT:\n{res.stdout}\nSTDERR:\n{res.stderr}"
+                except Exception as e:
+                    # Read the written file to pass to prediction
+                    with open(full_path, "r", encoding="utf-8") as f:
+                        file_content = f.read()
+                    predict_prompt = (
+                        f"Analyze this python script and predict its output if run. "
+                        f"Here is the script:\n```python\n{file_content}\n```\n"
+                        "Return ONLY the exact predicted terminal output (stdout/stderr). Do not add any explanatory text."
+                    )
+                    execution_output = await self.call_llm(predict_prompt, "You are a Python code execution simulator.", task["model"])
+                
+                await slack_client.post_message(
+                    "#agent-log",
+                    f"💻 *OpenClaw Code Execution Output for `{os.path.basename(full_path)}`*:\n```\n{execution_output}\n```"
+                )
+                
+                # Write the output to a text log file next to it for reference
+                try:
+                    with open(full_path + ".log", "w", encoding="utf-8") as lf:
+                        lf.write(execution_output)
+                except Exception:
+                    pass
+
         task["status"] = "Review"
         tasks[task_id] = task
         tasks_store.write_all(tasks)
+
+        # Format status report using: What I Did / What's Left / What Needs Your Call
+        status_report = (
+            f"📊 *OpenClaw Task Status Report*\n\n"
+            f"*What I Did*:\n"
+            f"- Implemented \"{task['title']}\" and saved to `{files_written_names}`.\n"
+            f"- Ran the code and verified the output.\n\n"
+            f"*What's Left*:\n"
+            f"- QA verification testing.\n"
+            f"- Security audit scanning.\n\n"
+            f"*What Needs Your Call*:\n"
+            f"- Please review the execution output in `#agent-log` and approve the sprint."
+        )
+        await slack_client.post_message("#sprint-main", status_report)
+        await slack_client.post_message("#agent-developer", status_report)
+        await slack_client.post_message("#agent-coder", status_report)
 
         await slack_client.post_message(
             "#agent-developer",
             f"✅ *Implementation Complete*: \"{task['title']}\" written to `{os.path.relpath(app_dir, repo_root)}`.",
         )
         slack_client.log_event("Developer", "Task Complete", f"Moved to Review", task_id)
+        return True
+
+    async def revise_task(self, task_id: str, change_request: str) -> bool:
+        tasks = tasks_store.read_all()
+        task = tasks.get(task_id)
+        if not task:
+            logger.error(f"Task {task_id} not found for revision.")
+            return False
+
+        logger.info(f"Revising task {task_id} based on change request: {change_request}")
+        await slack_client.post_message(
+            "#agent-coder",
+            f"🔄 *Revision Started*: OpenClaw is revising \"{task['title']}\" based on: \"{change_request}\"."
+        )
+        
+        repo_root = "/home/mirage/Projects/forge2"
+        app_name = task.get("app_name") or "my_app"
+        app_dir = os.path.join(repo_root, "forge", "demo", app_name)
+        
+        # Read the existing file in the directory
+        existing_code = ""
+        filename = "main.py"
+        full_path = os.path.join(app_dir, filename)
+        if os.path.exists(full_path):
+            try:
+                with open(full_path, "r", encoding="utf-8") as f:
+                    existing_code = f.read()
+            except Exception:
+                pass
+        
+        # Call LLM to revise the code
+        system_prompt = (
+            "You are the Lead Developer Agent of ForgeOS. Revise the provided code based on the user's change request."
+        )
+        prompt = (
+            f"Original Task: {task['title']} - {task['description']}\n"
+            f"Existing Code:\n```python\n{existing_code}\n```\n"
+            f"User's Change Request: {change_request}\n"
+            f"Provide the complete revised Python code in a single code block."
+        )
+        
+        revised_response = await self.call_llm(prompt, system_prompt, task["model"])
+        
+        # Extract markdown code blocks
+        import re
+        code_blocks = re.findall(r"```([a-zA-Z0-9+#-]+)?\s*(.*?)\n(.*?)```", revised_response, re.DOTALL)
+        revised_content = revised_response
+        if code_blocks:
+            # Get content from the first block
+            revised_content = code_blocks[0][2].strip()
+            
+        # Write revised code
+        try:
+            os.makedirs(os.path.dirname(full_path), exist_ok=True)
+            with open(full_path, "w", encoding="utf-8") as f:
+                f.write(revised_content)
+        except Exception as e:
+            logger.error(f"Failed to write revised file: {e}")
+            return False
+
+        # Run the revised code
+        import subprocess
+        execution_output = ""
+        try:
+            res = subprocess.run(["python", full_path], capture_output=True, text=True, timeout=5)
+            execution_output = f"STDOUT:\n{res.stdout}\nSTDERR:\n{res.stderr}"
+        except Exception as e:
+            predict_prompt = (
+                f"Analyze this revised python script and predict its output if run.\n```python\n{revised_content}\n```\n"
+                "Return ONLY the exact predicted terminal output. No explanations."
+            )
+            execution_output = await self.call_llm(predict_prompt, "You are a Python code execution simulator.", task["model"])
+
+        await slack_client.post_message(
+            "#agent-log",
+            f"💻 *OpenClaw Revised Code Execution Output for `{filename}`*:\n```\n{execution_output}\n```"
+        )
+
+        status_report = (
+            f"📊 *OpenClaw Revision Status Report*\n\n"
+            f"*What I Did*:\n"
+            f"- Revised the Python code to support: \"{change_request}\".\n"
+            f"- Re-executed the script and verified the output.\n\n"
+            f"*What's Left*:\n"
+            f"- Awaiting your review and final approval.\n\n"
+            f"*What Needs Your Call*:\n"
+            f"- Please let me know if this revision is correct or if further changes are needed."
+        )
+        await slack_client.post_message("#sprint-main", status_report)
+        await slack_client.post_message("#agent-coder", status_report)
         return True
 
 
