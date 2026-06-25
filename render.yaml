@@ -1,0 +1,35 @@
+services:
+  # ============================================================
+  # BACKEND SERVICE
+  # ============================================================
+  - type: web
+    name: forgeos-backend
+    runtime: docker
+    repo: https://github.com/vedantsinggh/forge2
+    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    envVars:
+      - key: SIMULATION_MODE
+        value: "true"
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: PORT
+        value: "8000"
+    healthCheckPath: /api/health
+
+  # ============================================================
+  # FRONTEND SERVICE
+  # ============================================================
+  - type: web
+    name: forgeos-frontend
+    runtime: docker
+    repo: https://github.com/vedantsinggh/forge2
+    plan: free
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    envVars:
+      - key: VITE_API_URL
+        value: "https://forgeos-backend.onrender.com/api"
+    dependsOn:
+      - forgeos-backend

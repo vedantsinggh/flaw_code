@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 
 // Backend Host Configuration
-const API_URL = 'http://localhost:8000/api'
+const API_URL = 'https://forgeos-backend.onrender.com/api'
 
 interface Task {
   id: string
