@@ -1,0 +1,67 @@
+{
+  "task_1782548269_0": {
+    "id": "task_1782548269_0",
+    "title": "FastAPI Backend & Database Layer",
+    "description": "Initialize the Python 3.12+ backend environment. Configure requirements.txt with FastAPI, Uvicorn, SQLAlchemy, and Pydantic. Implement database.py for SQLite connection, models.py for the Todo ORM, schemas.py for Pydantic validation, and crud.py for database operations. Create main.py to launch the FastAPI server, enable CORS, and expose REST endpoints (GET /todos, POST /todos, PUT /todos/{id}, PATCH /todos/{id}/toggle, DELETE /todos/{id}).",
+    "status": "Review",
+    "assigned_agent": "Developer Agent",
+    "priority": 5,
+    "difficulty": 4,
+    "skills": [
+      "Python",
+      "FastAPI",
+      "SQLAlchemy",
+      "Pydantic",
+      "SQLite",
+      "REST API"
+    ],
+    "eta_seconds": 400,
+    "model": "z-ai/glm-4.6",
+    "confidence": 0.95,
+    "created_at": "2026-06-27T08:17:49.323846",
+    "app_name": "todo_app"
+  },
+  "task_1782548270_1": {
+    "id": "task_1782548270_1",
+    "title": "React Frontend Setup & API Integration",
+    "description": "Scaffold the React 19 frontend using Vite and TypeScript. Configure react-router-dom for routing structure. Create a centralized API service using Axios to interface with the FastAPI backend, defining functions for all CRUD operations. Define TypeScript interfaces matching the backend schemas. Set up the main App.tsx structure and CSS Modules configuration to prepare for component development.",
+    "status": "Review",
+    "assigned_agent": "Developer Agent",
+    "priority": 5,
+    "difficulty": 3,
+    "skills": [
+      "React",
+      "TypeScript",
+      "Vite",
+      "Axios",
+      "React Router"
+    ],
+    "eta_seconds": 400,
+    "model": "z-ai/glm-4.6",
+    "confidence": 0.95,
+    "created_at": "2026-06-27T08:17:50.731758",
+    "app_name": "todo_app"
+  },
+  "task_1782548271_2": {
+    "id": "task_1782548271_2",
+    "title": "UI Implementation, State Management & Interactions",
+    "description": "Develop the core UI components (TodoList, TodoForm, TodoItem, FilterBar) using CSS Modules for a responsive, modern design. Implement application logic for creating, editing, deleting (with confirmation), and toggling the completion status of todos. Add search and filter capabilities (All, Active, Completed). Handle global loading and error states. Integrate all components with the API service to ensure full data persistence and synchronization.",
+    "status": "Security",
+    "assigned_agent": "Documentation Agent",
+    "priority": 5,
+    "difficulty": 4,
+    "skills": [
+      "React Hooks",
+      "TypeScript",
+      "CSS Modules",
+      "UI/UX Design",
+      "State Management"
+    ],
+    "eta_seconds": 400,
+    "model": "z-ai/glm-4.6",
+    "confidence": 0.95,
+    "created_at": "2026-06-27T08:17:51.776743",
+    "app_name": "todo_app",
+    "pending_approval": true
+  }
+}
