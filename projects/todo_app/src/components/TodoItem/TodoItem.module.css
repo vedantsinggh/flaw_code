@@ -1,0 +1,108 @@
+.item {
+  display: flex;
+  align-items: center;
+  background: white;
+  padding: 1rem;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.item:hover {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.checkbox {
+  appearance: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid #d1d5db;
+  border-radius: 50%;
+  margin-right: 1rem;
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.checkbox:checked {
+  background-color: #3b82f6;
+  border-color: #3b82f6;
+}
+
+.checkbox:checked::after {
+  content: '✔';
+  color: white;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 0.8rem;
+}
+
+.content {
+  flex: 1;
+  margin-right: 1rem;
+}
+
+.text {
+  font-size: 1rem;
+  color: #1f2937;
+  word-break: break-word;
+}
+
+.completed .text {
+  text-decoration: line-through;
+  color: #9ca3af;
+}
+
+.input {
+  width: 100%;
+  padding: 0.5rem;
+  font-size: 1rem;
+  border: 2px solid #3b82f6;
+  border-radius: 4px;
+  outline: none;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.iconButton {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 4px;
+  color: #6b7280;
+  transition: background-color 0.2s, color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.iconButton:hover {
+  background-color: #f3f4f6;
+  color: #374151;
+}
+
+.editButton:hover {
+  color: #3b82f6;
+  background-color: #eff6ff;
+}
+
+.deleteButton:hover {
+  color: #ef4444;
+  background-color: #fef2f2;
+}
+
+.saveButton {
+  color: #10b981;
+}
+
+.saveButton:hover {
+  color: #059669;
+  background-color: #ecfdf5;
+}
