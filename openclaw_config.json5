@@ -1,0 +1,31 @@
+// OpenClaw configuration (JSON5 format)
+{
+  // Global settings for OpenClaw
+  "agents": {
+    "defaults": {
+      // Path to the workspace directory where OpenClaw stores its data
+      "workspace": "~/openclaw/workspace",
+      // Heartbeat interval for agents
+      "heartbeat": {
+        "every": "1h"
+      },
+      // Default LLM provider configuration (can be overridden per agent)
+      "model": {
+        "provider": "ollama",
+        "base_url": "http://localhost:11434",
+        "model_name": "qwen2.5-coder:7b"
+      }
+    }
+  },
+  "channels": {
+    // Communication channels (Slack, Discord, etc.)
+    "slack": {
+      "webhook_url": "${SLACK_WEBHOOK_URL}",
+      "bot_token": "${SLACK_BOT_TOKEN}"
+    }
+  },
+  "logging": {
+    "level": "info",
+    "format": "[${time}] ${level} ${message}"
+  }
+}

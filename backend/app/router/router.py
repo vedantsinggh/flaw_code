@@ -57,29 +57,29 @@ class IntelligentRouter:
 
         # ── Tier selection ─────────────────────────────────────────────────────
         if task_type == "planning":
-            selected_model = "qwen2.5-coder:7b"
+            selected_model = "z-ai/glm-4.6"
             difficulty     = "Complex"
-            reason         = "Orchestration planning routed to Qwen2.5-Coder 7B locally via Ollama."
+            reason         = "Orchestration planning routed to GLM-4.6 via EastRouter API."
             confidence     = 0.95
             est_tokens     = 12000
-            budget         = 0.00
+            budget         = 0.001
         else:
-            # Tier 1 — Qwen2.5-Coder local (easy, fast code tasks)
-            selected_model = "qwen2.5-coder:7b"
+            # Tier 1 — Easy / Fast code tasks
+            selected_model = "qwen/qwen-2.5-coder-32b-instruct"
             difficulty     = "Easy"
-            reason         = "Simple, well-scoped code task routed to Qwen2.5-Coder 7B running locally via Ollama."
+            reason         = "Simple, well-scoped code task routed to Qwen 2.5 Coder 32B via EastRouter API."
             confidence     = 0.95
             est_tokens     = 2500
-            budget         = 0.00
+            budget         = 0.0005
 
-            # Tier 2 — DeepSeek-R1 local (medium reasoning, dependency-heavy)
+            # Tier 2 — Medium complexity reasoning & planning
             if reasoning_complexity == "Medium" or expected_loc > 100 or dependency_count > 2:
-                selected_model = "deepseek-r1:1.5b"
+                selected_model = "z-ai/glm-4.6"
                 difficulty     = "Medium"
-                reason         = "Medium complexity with dependency or reasoning requirements routed to DeepSeek-R1 1.5B locally via Ollama."
-                confidence     = 0.90
+                reason         = "Medium complexity code task routed to GLM-4.6 via EastRouter API."
+                confidence     = 0.92
                 est_tokens     = 6000
-                budget         = 0.00
+                budget         = 0.001
 
             # Tier 3 — Groq DeepSeek-R1 distill 70B (architectural / high complexity)
             if reasoning_complexity == "High" or architectural_impact == "High" or ambiguity == "Medium":
@@ -100,8 +100,8 @@ class IntelligentRouter:
         if selected_model.startswith("groq/"):
             tokens_per_sec = 180.0
         else:
-            # Local Ollama on a slower system
-            tokens_per_sec = 8.0
+            # EastRouter API cloud inference
+            tokens_per_sec = 60.0
 
         est_time = int(est_tokens / tokens_per_sec)
         est_time = max(15, est_time)

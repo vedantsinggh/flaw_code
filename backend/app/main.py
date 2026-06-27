@@ -37,7 +37,7 @@ logger = logging.getLogger("forgeos.main")
 # ── Bootstrap ─────────────────────────────────────────────────────────────────
 initialize_database()
 
-app = FastAPI(title="ForgeOS API", version="1.0.0")
+app = FastAPI(title="OpenFlaw API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -57,6 +57,81 @@ async def _check_pause():
         await asyncio.sleep(1)
 
 
+async def _run_developer_task_with_retry(task_id: str) -> bool:
+    success = await developer_agent.execute_task(task_id)
+    if success:
+        return True
+
+    logger.warning(f"OpenClaw execution failed for task {task_id}. Initiating Hermes decomposition retry...")
+    tasks = tasks_store.read_all()
+    task = tasks.get(task_id)
+    if not task:
+        return False
+
+    # Hermes detects failure:
+    await slack_client.post_message(
+        "#agent-developer",
+        f"❌ *OpenClaw Task Failure Detected*: OpenClaw failed task `{task_id}`. Hermes is decomposing it to retry with a smaller task...",
+        sender="Hermes",
+        receiver="OpenClaw",
+        agent="Hermes"
+    )
+    
+    # Simplify task details
+    try:
+        prompt = f"Decompose/simplify the following failed task into a single smaller, simpler version. Failed task: {task['title']} - {task['description']}"
+        system_prompt = "You are Hermes, the Orchestrator. Simplify the failed task into a smaller, more achievable task description for retry. Return only the new title and description as JSON: {\"title\": \"...\", \"description\": \"...\"}"
+        simp_res = await hermes_agent.call_llm(prompt, system_prompt, task["model"])
+        import json, re
+        match = re.search(r"(\{.*?\})", simp_res, re.DOTALL)
+        if match:
+            simp_json = json.loads(match.group(1))
+            task["title"] = simp_json.get("title", task["title"])
+            task["description"] = simp_json.get("description", task["description"])
+        else:
+            task["title"] = f"Simplified: {task['title']}"
+            task["description"] = f"Minimal implementation: {task['description']}"
+    except Exception:
+        task["title"] = f"Simplified: {task['title']}"
+        task["description"] = f"Minimal implementation: {task['description']}"
+
+    # Update task
+    task["status"] = "In Progress"
+    tasks[task_id] = task
+    tasks_store.write_all(tasks)
+
+    # Post retry assignment
+    await slack_client.post_message(
+        "#agent-developer",
+        f"📋 *Task Reassigned (Simplified)*: `{task_id}` — \"{task['title']}\".",
+        sender="Hermes",
+        receiver="OpenClaw",
+        agent="Hermes"
+    )
+
+    # Retry execution
+    retry_success = await developer_agent.execute_task(task_id)
+    if not retry_success:
+        await slack_client.post_message(
+            "#agent-log",
+            f"🚨 *Critical Error*: OpenClaw failed execution twice for task `{task_id}`. Human intervention required!",
+            sender="Hermes",
+            receiver="human",
+            agent="Hermes",
+            status="error"
+        )
+        await slack_client.post_message(
+            "#human-review",
+            f"🚨 *Critical Error*: OpenClaw failed execution twice for task `{task_id}`. Sprint halted, awaiting human review.",
+            sender="Hermes",
+            receiver="human",
+            agent="Hermes",
+            status="error"
+        )
+        raise RuntimeError(f"OpenClaw execution failed twice for task {task_id}")
+    return True
+
+
 async def _run_pipeline_autopilot(task_id: str):
     """
     Executes the full agent chain for a single task:
@@ -65,7 +140,7 @@ async def _run_pipeline_autopilot(task_id: str):
     """
     try:
         await _check_pause()
-        await developer_agent.execute_task(task_id)
+        await _run_developer_task_with_retry(task_id)
         await asyncio.sleep(1)
 
         await _check_pause()
@@ -83,15 +158,175 @@ async def _run_pipeline_autopilot(task_id: str):
         event_log_store.append_event("System", "Pipeline Error", str(e), task_id)
 
 
+async def verify_startup_checks():
+    missing_vars = []
+    
+    # Required Env Variables
+    if not settings.SLACK_BOT_TOKEN:
+        missing_vars.append("SLACK_BOT_TOKEN")
+    if not settings.SLACK_APP_TOKEN:
+        missing_vars.append("SLACK_APP_TOKEN")
+    if not settings.SLACK_SIGNING_SECRET:
+        missing_vars.append("SLACK_SIGNING_SECRET")
+    if not settings.EASTROUTER_API_KEY:
+        missing_vars.append("EASTROUTER_API_KEY")
+    if not settings.GITHUB_TOKEN:
+        missing_vars.append("GITHUB_TOKEN")
+    
+    target_repo = settings.TARGET_REPOSITORY or settings.GITHUB_REPOSITORY
+    if not target_repo:
+        missing_vars.append("TARGET_REPOSITORY")
+    if not settings.TARGET_BRANCH:
+        missing_vars.append("TARGET_BRANCH")
+    if not settings.OPENCLAW_WORKSPACE:
+        missing_vars.append("OPENCLAW_WORKSPACE")
+
+    if missing_vars:
+        report = (
+            "\n"
+            "========================================================\n"
+            "                 STARTUP DEPENDENCY REPORT              \n"
+            "========================================================\n"
+            "CRITICAL ERROR: Partially configured agents detected.\n"
+            "The following required environment variables are missing:\n"
+            + "\n".join([f" - {var}" for var in missing_vars]) + "\n"
+            "========================================================\n"
+            "Aborting startup. Please configure the above variables.\n"
+            "========================================================\n"
+        )
+        print(report, flush=True)
+        raise RuntimeError("Startup dependency verification failed. Missing environment variables.")
+
+    # 1. Verify Repository Access via GitHub API
+    import httpx
+    try:
+        headers = {
+            "Authorization": f"token {settings.GITHUB_TOKEN}",
+            "Accept": "application/vnd.github.v3+json"
+        }
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.get(f"https://api.github.com/repos/{target_repo}", headers=headers)
+            if r.status_code != 200:
+                raise RuntimeError(f"Repository details fetch returned status {r.status_code}: {r.text}")
+    except Exception as e:
+        report = (
+            "\n"
+            "========================================================\n"
+            "                 STARTUP DEPENDENCY REPORT              \n"
+            "========================================================\n"
+            f"CRITICAL ERROR: GitHub Repository Access check failed.\n"
+            f"Details: {e}\n"
+            "========================================================\n"
+        )
+        print(report, flush=True)
+        raise RuntimeError("Repository access verification failed.")
+
+    # 2. Verify Docker availability
+    import shutil
+    docker_bin = shutil.which("docker")
+    if docker_bin:
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                docker_bin, "--version",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await proc.communicate()
+            if proc.returncode != 0:
+                raise RuntimeError(f"Docker check returned non-zero code {proc.returncode}")
+        except Exception as e:
+            report = (
+                "\n"
+                "========================================================\n"
+                "                 STARTUP DEPENDENCY REPORT              \n"
+                "========================================================\n"
+                f"CRITICAL ERROR: Docker availability check failed.\n"
+                f"Details: {e}\n"
+                "========================================================\n"
+            )
+            print(report, flush=True)
+            raise RuntimeError("Docker check failed.")
+    elif os.path.exists("/.dockerenv") or os.path.exists("/var/run/docker.sock"):
+        logger.info("[STARTUP CHECK] Running inside Docker container environment. Docker availability verified.")
+    else:
+        report = (
+            "\n"
+            "========================================================\n"
+            "                 STARTUP DEPENDENCY REPORT              \n"
+            "========================================================\n"
+            "CRITICAL ERROR: Docker availability check failed.\n"
+            "Details: 'docker' executable not found in PATH and container environment not detected.\n"
+            "========================================================\n"
+        )
+        print(report, flush=True)
+        raise RuntimeError("Docker check failed.")
+
+    # 3. Verify Python version
+    import sys
+    if sys.version_info < (3, 10):
+        report = (
+            "\n"
+            "========================================================\n"
+            "                 STARTUP DEPENDENCY REPORT              \n"
+            "========================================================\n"
+            f"CRITICAL ERROR: Python version check failed.\n"
+            f"Required: 3.10+, Current: {sys.version}\n"
+            "========================================================\n"
+        )
+        print(report, flush=True)
+        raise RuntimeError("Python version check failed.")
+
+    # 4. Verify Workspace permissions
+    workspace_path = os.path.expanduser(settings.OPENCLAW_WORKSPACE)
+    if not os.path.exists(workspace_path):
+        try:
+            os.makedirs(workspace_path, exist_ok=True)
+        except Exception as e:
+            report = (
+                "\n"
+                "========================================================\n"
+                "                 STARTUP DEPENDENCY REPORT              \n"
+                "========================================================\n"
+                f"CRITICAL ERROR: Workspace directory creation failed.\n"
+                f"Details: {e}\n"
+                "========================================================\n"
+            )
+            print(report, flush=True)
+            raise RuntimeError("Workspace permissions check failed.")
+
+    if not os.access(workspace_path, os.R_OK | os.W_OK):
+        report = (
+            "\n"
+            "========================================================\n"
+            "                 STARTUP DEPENDENCY REPORT              \n"
+            "========================================================\n"
+            f"CRITICAL ERROR: Workspace directory read/write check failed.\n"
+            f"Workspace Path: {workspace_path}\n"
+            "========================================================\n"
+        )
+        print(report, flush=True)
+        raise RuntimeError("Workspace permissions check failed.")
+
+    print("\n>>> STARTUP CHECK SUCCESS: All dependencies and credentials verified! <<<\n", flush=True)
+
+
 # ── Startup ───────────────────────────────────────────────────────────────────
 @app.on_event("startup")
 async def startup_event():
-    logger.info("ForgeOS starting up…")
+    logger.info("OpenFlaw starting up…")
+    try:
+        await verify_startup_checks()
+    except Exception as e:
+        logger.error(f"Startup verification check failed: {e}")
+        # Terminate the application immediately to prevent running with partially configured agents
+        import sys
+        sys.exit(1)
+
     await health_monitor.run_checks()
     # Trigger autonomous run in the background
     asyncio.create_task(_trigger_autonomous_run())
 
-    event_log_store.append_event("System", "Startup", "ForgeOS API is online and ready.")
+    event_log_store.append_event("System", "Startup", "OpenFlaw API is online and ready.")
 
 
 # ── Read endpoints ─────────────────────────────────────────────────────────────
@@ -174,9 +409,7 @@ async def approve_sprint(task_id: str):
         raise HTTPException(status_code=404, detail="Task not found.")
 
     task = tasks[task_id]
-    if not task.get("pending_approval"):
-        return {"message": "Task does not require approval or is already finalised."}
-
+    task["pending_approval"] = True
     await _finalise_sprint(task_id, task, source="Dashboard")
     return {"message": f"Task {task_id} approved and sprint completed."}
 
@@ -234,7 +467,7 @@ async def slack_commands(request: Request, background_tasks: BackgroundTasks):
         tasks = tasks_store.read_all()
         active = [t for t in tasks.values() if t["status"] != "Done"]
         lines = [f"• `{t['id']}`: {t['title']} ({t['status']}) — {t['assigned_agent']}" for t in active]
-        msg = "📊 *ForgeOS Sprint Status*\n" + ("\n".join(lines) if lines else "No active tasks.")
+        msg = "📊 *OpenFlaw Sprint Status*\n" + ("\n".join(lines) if lines else "No active tasks.")
         await slack_client.post_message("#sprint-main", msg)
         event_log_store.append_event("Slack", "Status Requested", f"{len(active)} active tasks")
         return {"response_type": "in_channel", "text": msg}
@@ -323,7 +556,7 @@ async def slack_commands(request: Request, background_tasks: BackgroundTasks):
         memory = memory_store.read_all() or {}
         decisions = memory.get("architectural_decisions", [])[-3:]
         lines = [f"• `{d.get('timestamp', '')[:19]}` {d.get('decision', '')}" for d in decisions]
-        msg = "🧠 *ForgeOS Memory*\n" + ("\n".join(lines) if lines else "No architectural decisions recorded.")
+        msg = "🧠 *OpenFlaw Memory*\n" + ("\n".join(lines) if lines else "No architectural decisions recorded.")
         event_log_store.append_event("Slack", "Memory Requested", f"{len(decisions)} entries returned.")
         return {"response_type": "in_channel", "text": msg}
 
@@ -375,18 +608,20 @@ async def slack_gateway(request: Request, background_tasks: BackgroundTasks):
     if event_type == "event_callback":
         inner = payload.get("event", {})
         inner_type = inner.get("type", "")
-        if inner_type == "message" and "bot_id" not in inner:
+        if inner_type in ["message", "app_mention"] and "bot_id" not in inner:
             text = inner.get("text", "")
             user = inner.get("user", "unknown")
             channel = inner.get("channel", "unknown")
-            logger.info(f"[SLACK GATEWAY] Message from {user} in {channel}: {text}")
+            logger.info(f"[SLACK GATEWAY] {inner_type} from {user} in {channel}: {text}")
             event_log_store.append_event(
-                "Slack Gateway", "Message Received",
+                "Slack Gateway", f"{inner_type.title()} Received",
                 f"user={user} channel={channel} text={text}"
             )
+            import re
+            clean_text = re.sub(r"<@[A-Z0-9]+>", "", text).strip()
             # If it starts with /forge, dispatch via command handler
-            if text.strip().startswith("/forge"):
-                parts = text.strip().split(maxsplit=1)
+            if clean_text.startswith("/forge"):
+                parts = clean_text.split(maxsplit=1)
                 mock_request_body = {
                     "command": "/forge",
                     "text": parts[1] if len(parts) > 1 else "",
@@ -395,7 +630,7 @@ async def slack_gateway(request: Request, background_tasks: BackgroundTasks):
                 background_tasks.add_task(_dispatch_slack_text_command, mock_request_body)
             else:
                 # Direct conversational message handler
-                background_tasks.add_task(_dispatch_conversational_message, text, channel, user)
+                background_tasks.add_task(_dispatch_conversational_message, clean_text, channel, user)
         else:
             logger.info(f"[SLACK GATEWAY] Ignoring unsupported inner event type: {inner_type}")
 
@@ -485,9 +720,7 @@ async def _plan_and_execute(goal: str):
         await _check_pause()
         task["status"] = "In Progress"
         tasks[task_id] = task
-        tasks_store.write_all(tasks)
-
-        await developer_agent.execute_task(task_id)
+        await _run_developer_task_with_retry(task_id)
         await asyncio.sleep(1)
 
     # After developer phase is done, run Security, QA, and Docs on the last task of the sprint
@@ -542,8 +775,7 @@ async def _finalise_sprint(task_id: str, task: dict, source: str):
 
     tasks = tasks_store.read_all()
     app_name = task.get("app_name") or "my_app"
-    repo_root = "/home/mirage/Projects/forge2"
-    app_dir = os.path.join(repo_root, "forge", "demo", app_name)
+    app_dir = settings.get_app_dir(app_name)
 
     # Find all files in the app directory to commit
     files_to_commit = []

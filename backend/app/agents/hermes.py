@@ -92,7 +92,7 @@ class HermesAgent(BaseAgent):
         )
         slack_client.log_event("Hermes", "Decomposing", f"Goal: {goal}")
         system_prompt = (
-            "You are Hermes, the Principal Staff AI Architect of ForgeOS. Decompose software engineering "
+            "You are Hermes, the Principal Staff AI Architect of OpenFlaw. Decompose software engineering "
             "goals into structured task plans. Return ONLY a valid raw JSON object. Do NOT wrap it in python "
             "variable assignments, comments, or any other explanations. Ensure the root is a JSON object. "
             "Schema:\n"
@@ -261,6 +261,9 @@ class HermesAgent(BaseAgent):
                 await slack_client.post_message(
                     "#agent-developer",
                     f"📋 *Task Assigned*: `{task_id}` — \"{t_title}\".",
+                    sender="Hermes",
+                    receiver="OpenClaw",
+                    agent="Hermes",
                 )
             slack_client.log_event("Hermes", "Task Created", t_title, task_id)
         tasks_store.write_all(current_tasks)
@@ -387,7 +390,7 @@ class HermesAgent(BaseAgent):
             facts_context = "\nFacts you remember about the user from earlier sessions:\n" + "\n".join([f"- {f}" for f in user_facts])
             
         system_prompt = (
-            "You are Hermes, the autonomous orchestrator agent of ForgeOS.\n"
+            "You are Hermes, the autonomous orchestrator agent of OpenFlaw.\n"
             "You have a persistent memory. Here is your memory context:\n"
             f"{facts_context}\n\n"
             "If the user tells you a new fact about themselves (e.g. name, preferences, choices), "

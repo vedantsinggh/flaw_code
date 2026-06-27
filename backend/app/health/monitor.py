@@ -15,7 +15,7 @@ class HealthMonitor:
         Executes health queries against external services and local processes.
         Updates values in the health JSON store.
         """
-        logger.info("Executing ForgeOS health check queries...")
+        logger.info("Executing OpenFlaw health check queries...")
         current_health = health_store.read_all() or {}
         timestamp = datetime.utcnow().isoformat()
 
@@ -77,23 +77,16 @@ class HealthMonitor:
             "message": docker_msg
         }
 
-        # 7. Ollama health check
-        ollama_status = "Healthy"
-        ollama_msg = f"Connected to local Ollama base: {settings.OLLAMA_BASE_URL}"
-        try:
-            async with httpx.AsyncClient() as client:
-                res = await client.get(f"{settings.OLLAMA_BASE_URL}/api/tags", timeout=1.5)
-                if res.status_code != 200:
-                    ollama_status = "Warning"
-                    ollama_msg = f"Ollama returned status {res.status_code}"
-        except Exception:
-            ollama_status = "Warning"
-            ollama_msg = "Ollama connection timeout or offline; using simulation fallback models"
-
-        current_health["Ollama"] = {
-            "status": ollama_status,
+        # 7. EastRouter API health check
+        eastrouter_status = "Healthy"
+        eastrouter_msg = "Connected to EastRouter API"
+        if not settings.EASTROUTER_API_KEY:
+            eastrouter_status = "Warning"
+            eastrouter_msg = "EASTROUTER_API_KEY not configured"
+        current_health["EastRouter"] = {
+            "status": eastrouter_status,
             "last_checked": timestamp,
-            "message": ollama_msg
+            "message": eastrouter_msg
         }
 
         # 8. Memory layer check

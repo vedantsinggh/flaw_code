@@ -148,7 +148,7 @@ def initialize_database():
             "Slack":          {"status": "Starting", "last_checked": datetime.utcnow().isoformat(), "message": "Not yet checked"},
             "GitHub":         {"status": "Starting", "last_checked": datetime.utcnow().isoformat(), "message": "Not yet checked"},
             "GitHub Actions": {"status": "Starting", "last_checked": datetime.utcnow().isoformat(), "message": "Not yet checked"},
-            "Ollama":         {"status": "Starting", "last_checked": datetime.utcnow().isoformat(), "message": "Not yet checked"},
+            "EastRouter":     {"status": "Starting", "last_checked": datetime.utcnow().isoformat(), "message": "Not yet checked"},
             "Database":       {"status": "Healthy",  "last_checked": datetime.utcnow().isoformat(), "message": "JSONStore active"},
         })
 

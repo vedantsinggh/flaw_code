@@ -41,7 +41,7 @@ class SecurityAgent(BaseAgent):
         from app.skills.engine import skill_engine
         injected_skills_prompt = skill_engine.get_injected_prompt(["security"])
         system_prompt = (
-            "You are the Lead Security Architect of ForgeOS. Analyse for SQL Injection, XSS, CSRF, "
+            "You are the Lead Security Architect of OpenFlaw. Analyse for SQL Injection, XSS, CSRF, "
             "Prompt Injection, Command Injection, Path Traversal, Hardcoded Secrets, unsafe subprocess, "
             "auth patterns, and Dependency CVEs. Generate remediation advice."
             f"{injected_skills_prompt}"
@@ -54,9 +54,10 @@ class SecurityAgent(BaseAgent):
         import os
         import subprocess
 
-        repo_root = "/home/mirage/Projects/forge2"
+        from app.config import settings
         app_name = task.get("app_name") or "my_app"
-        app_dir = os.path.join(repo_root, "forge", "demo", app_name)
+        app_dir = settings.get_app_dir(app_name)
+        repo_root = settings.get_projects_base_dir()
 
         vulnerabilities = []
         

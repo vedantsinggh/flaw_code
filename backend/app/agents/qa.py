@@ -42,9 +42,9 @@ class QAAgent(BaseAgent):
         import subprocess
         import os
 
-        repo_root = "/home/mirage/Projects/forge2"
+        from app.config import settings
         app_name = task.get("app_name") or "my_app"
-        app_dir = os.path.join(repo_root, "forge", "demo", app_name)
+        app_dir = settings.get_app_dir(app_name)
 
         # 1. Syntax check
         syntax_errors = 0
@@ -83,7 +83,7 @@ class QAAgent(BaseAgent):
         from app.skills.engine import skill_engine
         injected_skills_prompt = skill_engine.get_injected_prompt(["testing"])
         system_prompt = (
-            "You are the QA Diagnosis Agent of ForgeOS. Examine linter and test output "
+            "You are the QA Diagnosis Agent of OpenFlaw. Examine linter and test output "
             "and verify completeness."
             f"{injected_skills_prompt}"
         )

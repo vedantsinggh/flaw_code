@@ -42,50 +42,50 @@ graph TD
 
 ## 2. Dynamic Agent Workflow (Data Flow)
 
-The typical lifecycle of a goal submitted to ForgeOS transitions across columns in the Kanban board:
+The typical lifecycle of a goal submitted to ForgeOS transitions across defined Slack channels and columns in the Kanban board:
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor User
-    participant Hermes as Hermes (Orchestrator)
+    participant Hermes as Hermes (PO & Orchestrator)
     participant Dev as Developer Agent (OpenClaw)
     participant QA as QA Agent (Pytest/Ruff)
     participant Sec as Security Agent (Bandit/Semgrep)
     participant Doc as Documentation Agent
     participant Slack as Slack Channels
 
-    User->>Hermes: Submit goal "Build a FastAPI CRUD API"
-    Hermes->>Slack: Notify Channel "#sprint-main"
+    User->>Slack: Submit goal in "#sprint-main"
+    Hermes->>Slack: Acknowledge & plan sprint in "#sprint-main"
     Note over Hermes: Classifies skills & routes LLMs
     Hermes->>Hermes: Decompose into Kanban Tasks
-    Hermes->>Dev: Handoff Task 1 (Planning -> In Progress)
+    Hermes->>Slack: Assign task to OpenClaw in "#agent-coder"
     
     activate Dev
-    Note over Dev: Writes code files in workspace
-    Dev->>Slack: Post status in "#agent-developer"
-    Dev->>QA: Handoff Task 1 (Review -> Testing)
+    Dev->>Slack: Acknowledge assignment in "#agent-coder"
+    Note over Dev: Writes code files in workspace & runs tests
+    Dev->>Slack: Post execution reports & logs in "#agent-log"
+    Dev->>QA: Handoff Task (Review -> Testing)
     deactivate Dev
 
     activate QA
     Note over QA: Executes pytest & ruff checks
     QA->>Slack: Post status in "#agent-qa" & "#ci-cd"
-    QA->>Sec: Handoff Task 1 (Testing -> Security)
+    QA->>Sec: Handoff Task (Testing -> Security)
     deactivate QA
 
     activate Sec
-    Note over Sec: Audit code for SQL injection, CSRF, secrets
+    Note over Sec: Audit code for vulnerabilities
     Sec->>Slack: Post status in "#agent-security"
-    Sec->>Doc: Handoff Task 1 (Security -> Documentation)
+    Sec->>Doc: Handoff Task (Security -> Documentation)
     deactivate Sec
 
     activate Doc
     Note over Doc: Generates README.md, API.md, CHANGELOG.md
-    Doc->>Slack: Post status in "#agent-docs"
-    Doc->>Hermes: Move Task to Done
+    Doc->>Slack: Request review in "#human-review" & post summary in "#sprint-main"
     deactivate Doc
 
-    Hermes->>Slack: Post sprint completion summary in "#sprint-main"
+    Hermes->>Slack: Summarize progress in "#sprint-main"
 ```
 
 ---

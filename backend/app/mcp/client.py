@@ -52,7 +52,7 @@ class MCPClient:
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
                 "clientInfo": {
-                    "name": "ForgeOS-MCP-Client",
+                    "name": "OpenFlaw-MCP-Client",
                     "version": "1.0.0"
                 }
             }

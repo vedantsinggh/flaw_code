@@ -42,7 +42,7 @@ class DocumentationAgent(BaseAgent):
         from app.skills.engine import skill_engine
         injected_skills_prompt = skill_engine.get_injected_prompt(["documentation"])
         system_prompt = (
-            "You are the Documentation Agent of ForgeOS. Write clear, technical documentation, "
+            "You are the Documentation Agent of OpenFlaw. Write clear, technical documentation, "
             "changelogs, and sprint reports."
             f"{injected_skills_prompt}"
         )
@@ -50,12 +50,11 @@ class DocumentationAgent(BaseAgent):
         doc_summary = await self.call_llm(prompt, system_prompt, task["model"])
         logger.info(f"Documentation Summary:\n{doc_summary}")
 
-        # Write documentation artefacts
-        repo_root = "/home/mirage/Projects/forge2"
+        from app.config import settings, make_editable
         app_name = task.get("app_name") or "my_app"
-        app_dir = os.path.join(repo_root, "forge", "demo", app_name)
+        app_dir = settings.get_app_dir(app_name)
         docs_folder = os.path.join(app_dir, "docs")
-        os.makedirs(docs_folder, exist_ok=True)
+        os.makedirs(docs_folder, mode=0o777, exist_ok=True)
 
         docs_to_generate = {
             "API.md": f"# API Reference — {task['title']}\n\n## Summary\n{doc_summary}\n",
@@ -88,6 +87,7 @@ class DocumentationAgent(BaseAgent):
             except Exception as e:
                 logger.error(f"Failed to write {name}: {e}")
 
+        make_editable(app_dir)
         slack_client.log_event("Documentation", "Docs Generated", "All artefacts written.", task_id)
         await slack_client.post_message(
             "#agent-docs",

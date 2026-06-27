@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 
 // Backend Host Configuration
-const API_URL = 'https://forgeos-backend.onrender.com/api'
+const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000/api'
 
 interface Task {
   id: string
@@ -276,7 +276,7 @@ export default function App() {
           <Layers className="h-8 w-8 text-primary animate-pulse" />
           <div>
             <h1 className="text-xl font-bold tracking-tight flex items-center space-x-2">
-              <span>ForgeOS</span>
+              <span>OpenFlaw</span>
               <span className="text-xs bg-accent/20 text-accent border border-accent/40 rounded px-1.5 py-0.5 ml-2 font-mono">
                 Simulation Ready
               </span>
@@ -488,6 +488,14 @@ export default function App() {
                         <span className="font-mono bg-border/40 px-1 rounded">{t.model}</span>
                         <span>Agent: Dev</span>
                       </div>
+                      {(t.status === 'Review' || t.pending_approval || t.status === 'In Progress') && (
+                        <button
+                          onClick={() => handleApproveSprint(t.id)}
+                          className="w-full mt-1.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 border border-emerald-500 rounded text-white text-[10px] font-semibold transition shadow-md shadow-emerald-950/20"
+                        >
+                          Approve & Deploy Sprint
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -515,6 +523,12 @@ export default function App() {
                         <span className="font-mono bg-border/40 px-1 rounded">{t.model}</span>
                         <span>Agent: QA/Sec</span>
                       </div>
+                      <button
+                        onClick={() => handleApproveSprint(t.id)}
+                        className="w-full mt-1.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 border border-emerald-500 rounded text-white text-[10px] font-semibold transition shadow-md shadow-emerald-950/20"
+                      >
+                        Approve & Deploy Sprint
+                      </button>
                     </div>
                   ))}
                 </div>
