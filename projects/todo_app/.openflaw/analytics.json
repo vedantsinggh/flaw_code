@@ -1,0 +1,12 @@
+{
+  "estimated_tokens": 6162,
+  "actual_tokens": 6038,
+  "estimated_cost": 0.0,
+  "actual_cost": 0.0,
+  "estimated_time_seconds": 102,
+  "actual_time_seconds": 91,
+  "loaded_skills_count": 11,
+  "security_score": 100.0,
+  "coverage": 100.0,
+  "quality_score": 100.0
+}
